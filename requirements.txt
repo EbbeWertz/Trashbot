@@ -1,0 +1,9 @@
+flask
+flask-socketio
+mpu6050-raspberrypi
+gpiozero
+numpy
+fastapi
+picamera2
+uvicorn
+rpi-libcamera
