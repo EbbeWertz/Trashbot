@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MTO TrashBot OS</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;500;700&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; touch-action: none; overflow: hidden; }
+        .font-ui { font-family: 'Orbitron', sans-serif; }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Tilt Meter Animation */
+        .tilt-hand { transition: transform 0.1s linear; }
+        .tilt-peak { transition: transform 1s ease-out, opacity 1.5s; }
+
+        /* Custom Range Slider Styling */
+        input[type=range].vertical {
+            writing-mode: bt-lr; /* IE */
+            appearance: slider-vertical;
+            width: 12px;
+            height: 180px;
+        }
+
+        /* Joystick styles */
+        .joy-base { touch-action: none; border-radius: 50%; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); }
+        .joy-thumb { transition: transform 0.05s ease-out; }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-slate-200">
+    <div id="app" class="h-screen flex flex-col p-4">
+        
+        <header class="flex justify-between items-center glass p-4 rounded-2xl mb-4 shadow-2xl">
+            <div class="flex items-center gap-4">
+                <div class="bg-blue-600 p-3 rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.5)]">
+                    <i class="fas fa-trash-can text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-ui font-bold text-lg tracking-wider text-white">MTO <span class="text-blue-400">TRASHBOT</span></h1>
+                    <div class="flex gap-3 text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                        <span><i class="fas fa-wifi text-green-500 mr-1"></i> {{ connection.ssid }}</span>
+                        <span><i class="fas fa-bolt text-yellow-500 mr-1"></i> {{ connection.uptime }}</span>
+                    </div>
+                </div>
+            </div>
+            <button @click="emergencyStop" class="bg-red-500 hover:bg-red-600 text-white font-black px-6 py-3 rounded-xl shadow-lg active:scale-95 transition-all">
+                ABORT (ESC)
+            </button>
+        </header>
+
+        <nav class="flex gap-2 mb-4">
+            <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
+                :class="activeTab === tab.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
+                class="flex-1 py-3 rounded-xl text-xs font-ui font-bold transition-all uppercase tracking-widest">
+                <i :class="tab.icon" class="mr-2"></i> {{ tab.label }}
+            </button>
+        </nav>
+
+        <main class="flex-1 relative overflow-hidden">
+            
+            <div v-if="activeTab === 'manual'" class="h-full grid grid-cols-1 lg:grid-cols-12 gap-4">
+                
+                <div class="lg:col-span-5 flex flex-col gap-4">
+                    <div class="glass p-6 rounded-3xl flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+                        <h3 class="absolute top-4 left-6 text-[10px] font-ui text-slate-500 uppercase tracking-widest">Stability Index</h3>
+                        
+                        <div class="relative w-64 h-32 mt-6 overflow-hidden">
+                            <div class="absolute bottom-0 w-64 h-64 rounded-full border-[16px] border-slate-700/30"></div>
+                            <div class="absolute bottom-0 w-64 h-64 rounded-full border-[16px] border-red-500/20" style="clip-path: polygon(0 0, 25% 0, 50% 50%, 75% 0, 100% 0, 100% 100%, 0 100%)"></div>
+                            
+                            <div class="tilt-hand absolute bottom-0 left-1/2 w-1.5 h-full bg-blue-400 origin-bottom rounded-full"
+                                :style="{ transform: `translateX(-50%) rotate(${telemetry.tilt}deg)` }">
+                                <div class="w-4 h-4 bg-blue-400 rounded-full absolute top-0 -left-1.5 shadow-[0_0_10px_#60a5fa]"></div>
+                            </div>
+                            <div class="tilt-peak absolute bottom-0 left-1/2 w-1 h-full bg-red-400 origin-bottom rounded-full"
+                                :style="{ transform: `translateX(-50%) rotate(${telemetry.peakTilt}deg)`, opacity: peakOpacity }"></div>
+                        </div>
+                        <div class="mt-4 font-ui text-2xl font-bold text-white">{{ telemetry.tilt }}°</div>
+                    </div>
+
+                    <div class="glass p-6 rounded-3xl h-1/2">
+                        <div class="flex justify-between items-end mb-6">
+                            <h3 class="text-[10px] font-ui text-slate-500 uppercase tracking-widest">Motor Diagnostics</h3>
+                            <div class="text-[10px] font-mono text-blue-400">DIFF_RATIO: 1.0</div>
+                        </div>
+                        <div class="space-y-8">
+                            <div v-for="(motor, index) in ['Left (A)', 'Right (B)']" :key="index">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-xs font-bold text-slate-400">{{ motor }}</span>
+                                    <span class="font-mono text-xs text-white">{{ index === 0 ? telemetry.rpm_l : telemetry.rpm_r }} RPM</span>
+                                </div>
+                                <div class="relative h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-700">
+                                    <div class="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-75"
+                                        :style="{ width: (index === 0 ? motorA_width : motorB_width) + '%' }"></div>
+                                    <div class="absolute inset-0 flex justify-center text-[8px] font-black leading-4 text-white/50">
+                                        CTRL: {{ index === 0 ? motorLPwr : motorRPwr }}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="glass rounded-3xl p-6 flex flex-col items-center justify-between">
+                        <h3 class="text-[10px] font-ui text-slate-500 uppercase tracking-widest mb-4">Precision Overrides</h3>
+                        <div class="flex justify-around w-full items-center flex-1">
+                            <div v-for="side in ['L', 'R']" class="flex flex-col items-center gap-4">
+                                <div class="text-[10px] font-bold text-slate-500">MTR_{{side}}</div>
+                                <input type="range" min="-1" max="1" step="0.01" class="vertical" 
+                                    v-model.number="side === 'L' ? manualL : manualR" 
+                                    @input="sendManual" @change="snapBack">
+                                <div class="w-10 h-10 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono text-xs">
+                                    {{ side === 'L' ? Math.round(manualL * 100) : Math.round(manualR * 100) }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex gap-2 w-full">
+                            <button @click="brakeMode = !brakeMode" :class="brakeMode ? 'bg-orange-500/20 text-orange-500' : 'bg-slate-700 text-slate-400'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-tighter transition-all">
+                                Brake Pulse: {{ brakeMode ? 'ON' : 'OFF' }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="glass rounded-3xl p-6 flex flex-col items-center">
+                        <h3 class="text-[10px] font-ui text-slate-500 uppercase tracking-widest mb-6">Directional Vector</h3>
+                        <div class="joy-base w-64 h-64 relative flex items-center justify-center border-4 border-slate-800 shadow-inner"
+                             @touchstart="handleTouch" @touchmove="handleTouch" @touchend="resetJoy">
+                            <div class="absolute w-full h-px bg-slate-800"></div>
+                            <div class="absolute h-full w-px bg-slate-800"></div>
+                            <div class="joy-thumb w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 shadow-2xl flex items-center justify-center border-4 border-blue-400/50 pointer-events-none"
+                                 :style="{ transform: `translate(${joyPos.x}px, ${joyPos.y}px)` }">
+                                <i class="fas fa-arrows-alt text-white/50"></i>
+                            </div>
+                        </div>
+                        <div class="mt-auto grid grid-cols-2 gap-2 w-full pt-6">
+                            <div class="bg-slate-900/50 p-2 rounded-lg text-center">
+                                <div class="text-[8px] text-slate-500 uppercase">Speed (Approx)</div>
+                                <div class="text-sm font-ui text-white">0.42 m/s</div>
+                            </div>
+                            <div class="bg-slate-900/50 p-2 rounded-lg text-center">
+                                <div class="text-[8px] text-slate-500 uppercase">Angle</div>
+                                <div class="text-sm font-ui text-white">12.5°</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else class="h-full flex items-center justify-center glass rounded-3xl">
+                <div class="text-center">
+                    <i :class="tabs.find(t => t.id === activeTab).icon" class="text-6xl text-slate-700 mb-4"></i>
+                    <h2 class="text-2xl font-ui font-bold text-slate-600 uppercase">{{ activeTab }} Mode Locked</h2>
+                    <p class="text-slate-500">Hardware initialization required.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const activeTab = ref('manual');
+                const tabs = [
+                    { id: 'manual', label: 'Drive', icon: 'fas fa-gamepad' },
+                    { id: 'gesture', label: 'Follow', icon: 'fas fa-hand-paper' },
+                    { id: 'catch', label: 'Catch', icon: 'fas fa-basketball-ball' },
+                    { id: 'config', label: 'Setup', icon: 'fas fa-cog' }
+                ];
+
+                const connection = ref({ ssid: 'MTO_BASE_EXT', uptime: '00h 42m 15s' });
+                const telemetry = ref({ rpm_l: 0, rpm_r: 0, tilt: 0, peakTilt: 0 });
+                const peakOpacity = ref(0);
+                const motorLPwr = ref(0);
+                const motorRPwr = ref(0);
+                const brakeMode = ref(true);
+
+                // Individual Control State
+                const manualL = ref(0);
+                const manualR = ref(0);
+
+                // Joystick State
+                const joyPos = ref({ x: 0, y: 0 });
+
+                const motorA_width = computed(() => Math.abs(motorLPwr.value));
+                const motorB_width = computed(() => Math.abs(motorRPwr.value));
+
+                // --- TILT LOGIC ---
+                watch(() => telemetry.value.tilt, (newVal) => {
+                    if (Math.abs(newVal) > Math.abs(telemetry.value.peakTilt)) {
+                        telemetry.value.peakTilt = newVal;
+                        peakOpacity.value = 1;
+                        setTimeout(() => peakOpacity.value = 0, 1000);
+                        setTimeout(() => telemetry.value.peakTilt = 0, 2500);
+                    }
+                });
+
+                // --- CONTROL LOGIC ---
+                const sendCommand = (l, r) => {
+                    motorLPwr.value = Math.round(l * 100);
+                    motorRPwr.value = Math.round(r * 100);
+                    // WebSocket code goes here
+                };
+
+                const sendManual = () => sendCommand(manualL.value, manualR.value);
+                const snapBack = () => { manualL.value = 0; manualR.value = 0; sendCommand(0,0); };
+
+                const handleTouch = (e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    
+                    let dx = touch.clientX - centerX;
+                    let dy = touch.clientY - centerY;
+                    
+                    const limit = 80;
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+                    if (distance > limit) {
+                        dx *= limit / distance;
+                        dy *= limit / distance;
+                    }
+
+                    joyPos.value = { x: dx, y: dy };
+                    
+                    // Simple Diff-Drive Mapping
+                    const y = -dy / limit;
+                    const x = dx / limit;
+                    sendCommand(y + x, y - x);
+                };
+
+                const resetJoy = () => {
+                    joyPos.value = { x: 0, y: 0 };
+                    sendCommand(0, 0);
+                };
+
+                const emergencyStop = () => {
+                    manualL.value = 0; manualR.value = 0;
+                    resetJoy();
+                    sendCommand(0, 0);
+                };
+
+                onMounted(() => {
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'ArrowUp') sendCommand(0.8, 0.8);
+                        if (e.key === 'ArrowDown') sendCommand(-0.8, -0.8);
+                        if (e.key === 'ArrowLeft') sendCommand(-0.4, 0.4);
+                        if (e.key === 'ArrowRight') sendCommand(0.4, -0.4);
+                        if (e.key === 'Escape') emergencyStop();
+                    });
+                    window.addEventListener('keyup', snapBack);
+                    
+                    // Simulated telemetry for demo
+                    setInterval(() => {
+                        telemetry.value.tilt = Math.floor(Math.random() * 10) - 5;
+                        telemetry.value.rpm_l = Math.abs(motorLPwr.value * 2.5);
+                        telemetry.value.rpm_r = Math.abs(motorRPwr.value * 2.5);
+                    }, 200);
+                });
+
+                return { 
+                    activeTab, tabs, connection, telemetry, peakOpacity,
+                    motorLPwr, motorRPwr, motorA_width, motorB_width,
+                    manualL, manualR, joyPos, brakeMode,
+                    sendManual, snapBack, handleTouch, resetJoy, emergencyStop
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
