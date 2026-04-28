@@ -1,74 +1,57 @@
 import asyncio
 import json
-import time
+import cv2
+import numpy as np
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from hardware.TrashbotHardware import TrashbotHardware
+from hardware.Camera import Camera
 from control.ManualMotorController import ManualMotorController
+import socketio
 
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 app = FastAPI()
+combined_app = socketio.ASGIApp(sio, app)
+
 hw = TrashbotHardware()
 controller = ManualMotorController(hw)
+hw.startCams()
 
-# Track start time for real uptime calculation
-START_TIME = time.time()
+UPTIME_START = datetime.now()
 
 @app.get("/")
 async def get_index():
-    # Ensure your HTML file is in a folder named 'templates'
     with open("templates/index.html") as f:
         return HTMLResponse(content=f.read())
 
+async def uptime_loop():
+    while True:
+        now = str(datetime.now() - UPTIME_START).split('.')[0]
+        print(f"[uptime]: {now}")
+        await sio.emit('uptime_update', {
+            'uptime': now
+        })
+        await asyncio.sleep(1)
+
+async def camera_frames_loop(view):
+    while True:
+        left_frame, right_frame = hw.getCamFrames()
+        frame = left_frame if view == "left" else right_frame
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+@app.get("/video")
+async def video_feed(view: str = "raw"):
+    return StreamingResponse(camera_frames_loop(view), 
+                             media_type="multipart/x-mixed-replace; boundary=frame")
+
 @app.on_event("startup")
 async def startup_event():
-    # Start the background loop that calculates PID/Motor outputs
-    asyncio.create_task(controller.update_loop())
+    asyncio.create_task(uptime_loop())
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    
-    try:
-        while True:
-            # 1. Non-blocking check for incoming control data
-            try:
-                raw_data = await asyncio.wait_for(websocket.receive_text(), timeout=0.01)
-                data = json.loads(raw_data)
-                
-                msg_type = data.get('type')
-                if msg_type == 'drive':
-                    controller.set_targets(data['l'], data['r'])
-                elif msg_type == 'zero_imu':
-                    hw.imu.zero()
-                elif msg_type == 'abort':
-                    controller.set_targets(0, 0)
-                    hw.stop()
-            except asyncio.TimeoutError:
-                pass 
-
-            # 2. Calculate real-time uptime
-            uptime_sec = int(time.time() - START_TIME)
-            uptime_str = f"{uptime_sec // 3600:02d}h {(uptime_sec % 3600) // 60:02d}m {uptime_sec % 60:02d}s"
-
-            # 3. Construct and send telemetry payload
-            payload = {
-                "rpm_l": round(hw.left_motor.get_rpm(), 1),
-                "rpm_r": round(hw.right_motor.get_rpm(), 1),
-                "tilt": hw.imu.get_tilt(),
-                "uptime": uptime_str,
-                "ssid": "GROEP6_BOT_AP"
-            }
-            await websocket.send_json(payload)
-            
-            # Sync rate: 20Hz (matches typical frontend refresh rates)
-            await asyncio.sleep(0.05) 
-            
-    except WebSocketDisconnect:
-        # Emergency stop if connection is lost
-        controller.set_targets(0, 0)
-        hw.stop()
-        print("Client disconnected: Motors Halted.")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(combined_app, host="0.0.0.0", port=8000)
