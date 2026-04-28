@@ -9,18 +9,18 @@
         <div class="flex gap-3 text-[10px] text-slate-400 uppercase font-bold tracking-widest">
           <span>
             <i class="fas fa-wifi text-green-500 mr-1"></i> 
-            {{ connection.socket }}
+            {{ status.connected ? 'ONLINE' : 'OFFLINE' }}
           </span>
           <span>
             <i class="fas fa-bolt text-yellow-500 mr-1"></i> 
-            {{ connection.uptime }}
+            {{ status.uptime }}
           </span>
         </div>
       </div>
     </div>
     
     <button 
-      @click="$emit('abort')" 
+      @click="emergencyStop" 
       class="bg-red-500 hover:bg-red-600 text-white font-black px-6 py-3 rounded-xl shadow-lg active:scale-95 transition-all"
     >
       STOP (ESC)
@@ -31,18 +31,13 @@
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue';
-defineProps({
-  connection: {
-    type: Object,
-    default: () => ({ socket: 'connected', uptime: '00h 00m 00s' })
-  }
-});
+import { useRobot } from '../services/robotService';
 
-const emit = defineEmits(['abort']);
+const { status, emergencyStop } = useRobot();
 
 const handleKeyDown = (event) => {
   if (event.key === 'Escape') {
-    emit('abort');
+    emergencyStop();
   }
 };
 

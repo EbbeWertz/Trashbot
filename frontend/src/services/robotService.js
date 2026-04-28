@@ -6,21 +6,17 @@ const state = reactive({
   connected: false,
   uptime: '00:00:00',
   sensors: {
-    battery: 0,
-    temp: 0,
-    distance: 0
+    motor_a: 0,
+    motor_b: 0,
   },
   lastError: null
 });
 
-// --- Socket Initialization ---
-// Passing no URL works if hosted on the same IP/Port as the backend
 const socket = io({
   reconnectionAttempts: 5,
   timeout: 10000,
 });
 
-// --- Internal Event Listeners ---
 socket.on('connect', () => {
   state.connected = true;
   state.lastError = null;
@@ -32,14 +28,14 @@ socket.on('disconnect', () => {
 
 socket.on('connect_error', (err) => {
   state.lastError = `Connection failed: ${err.message}`;
+  alert(state.lastError);
+  state.connected = false;
 });
 
-// Cadence 1: The 1Hz Uptime Heartbeat
 socket.on('uptime_update', (value) => {
   state.uptime = value;
 });
 
-// Cadence 2: The Async Sensor Push
 socket.on('sensor_data', (data) => {
   Object.assign(state.sensors, data);
 });
