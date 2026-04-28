@@ -1,6 +1,9 @@
 import { reactive, readonly } from 'vue';
 import { io } from 'socket.io-client';
 
+const host_extern = true;
+const extern_host = "trashbot-pi.local:8000"
+
 // --- Private State ---
 const state = reactive({
   connected: false,
@@ -12,7 +15,7 @@ const state = reactive({
   lastError: null
 });
 
-const socket = io({
+const socket = io(host_extern ? extern_host : {
   reconnectionAttempts: 5,
   timeout: 10000,
 });
@@ -28,12 +31,12 @@ socket.on('disconnect', () => {
 
 socket.on('connect_error', (err) => {
   state.lastError = `Connection failed: ${err.message}`;
-  alert(state.lastError);
+//   alert(state.lastError);
   state.connected = false;
 });
 
 socket.on('uptime_update', (value) => {
-  state.uptime = value;
+  state.uptime = value.uptime;
 });
 
 socket.on('sensor_data', (data) => {

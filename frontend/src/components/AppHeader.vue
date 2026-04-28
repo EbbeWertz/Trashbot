@@ -8,12 +8,17 @@
         </h1>
         <div class="flex gap-3 text-[10px] text-slate-400 uppercase font-bold tracking-widest">
           <span>
-            <i class="fas fa-wifi text-green-500 mr-1"></i> 
+            <i v-if="status.connected" class="fas fa-wifi text-green-500 mr-1"/>
+            <i v-else class="fas fa-wifi text-red-500 mr-1"/>
             {{ status.connected ? 'ONLINE' : 'OFFLINE' }}
           </span>
           <span>
             <i class="fas fa-bolt text-yellow-500 mr-1"></i> 
             {{ status.uptime }}
+          </span>
+          <span v-if="status.lastError">
+            <i class="fas fa-exclamation text-red-500 mr-1"></i> 
+            {{ status.lastError }}
           </span>
         </div>
       </div>

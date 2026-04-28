@@ -1,7 +1,7 @@
 <template>
   <div class="h-screen flex flex-col p-4 bg-[#0f172a] text-slate-200">
     
-    <AppHeader :connection="connection" @abort="emergencyStop" />
+    <AppHeader />
 
     <nav class="flex gap-2 mb-4">
       <router-link 
@@ -33,9 +33,9 @@
 <script setup>
 import { ref } from 'vue';
 import AppHeader from './components/AppHeader.vue';
-import { useRobotService } from './services/robotService';
+// import { useRobotService } from './services/robotService';
 
-const { connection, emergencyStop } = useRobotService();
+// const { connection, emergencyStop } = useRobotService();
 
 const tabs = [
   { id: 'manual', label: 'Drive', icon: 'fas fa-gamepad', path: '/' },
