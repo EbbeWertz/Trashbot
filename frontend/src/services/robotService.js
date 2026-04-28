@@ -2,7 +2,8 @@ import { reactive, readonly } from 'vue';
 import { io } from 'socket.io-client';
 
 const host_extern = true;
-const extern_host = "trashbot-pi.local:8000"
+const extern_host = "http://trashbot-pi.local:8000"
+export const video_url = host_extern ? `${extern_host}/video` : '/video'
 
 // --- Private State ---
 const state = reactive({
