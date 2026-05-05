@@ -9,7 +9,7 @@ class TrashbotHardware:
     WHEEL_RADIUS = 0.035 # meters
     TICKS = 20.0 * 48.0 # PPR * Gear Ratio
     CAM_W = 640
-    CAM_H = 480
+    CAM_H = 360
 
     def __init__(self):
         self.imu = IMU(0x68)

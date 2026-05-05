@@ -1,6 +1,6 @@
-flask
-flask-socketio
 mpu6050-raspberrypi
+cvzone
+
 gpiozero
 numpy
 fastapi

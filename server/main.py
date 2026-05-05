@@ -8,6 +8,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from hardware.TrashbotHardware import TrashbotHardware
 from hardware.Camera import Camera
 from control.ManualMotorController import ManualMotorController
+from control.FollowController import FollowController
+
 import socketio
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -15,7 +17,7 @@ app = FastAPI()
 combined_app = socketio.ASGIApp(sio, app)
 
 hw = TrashbotHardware()
-controller = ManualMotorController(hw)
+controller = FollowController(hw)
 hw.startCams()
 
 UPTIME_START = datetime.now()
@@ -36,8 +38,9 @@ async def uptime_loop():
 
 async def camera_frames_loop(view):
     while True:
-        left_frame, right_frame = hw.getCamFrames()
-        frame = left_frame if view == "left" else right_frame
+        frame = controller.update_loop()
+        # left_frame, right_frame = hw.getCamFrames()
+        # frame = left_frame if view == "left" else right_frame
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
