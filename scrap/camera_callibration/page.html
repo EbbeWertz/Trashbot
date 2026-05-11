@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stereo Calibration - PiCam3 Wide</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; text-align: center; margin: 0; padding: 20px; }
+        .container { max-width: 1300px; margin: auto; }
+        
+        /* Video Preview Styles */
+        #preview-container { 
+            position: relative; 
+            display: inline-block; 
+            border: 4px solid #333; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            background: #000;
+            line-height: 0;
+        }
+        #preview { width: 100%; max-width: 1280px; height: auto; }
+        
+        /* Status Overlays */
+        .status-badge {
+            position: absolute; top: 10px; right: 10px;
+            padding: 8px 15px; border-radius: 20px;
+            font-weight: bold; font-size: 0.9em;
+            background: rgba(0,0,0,0.6);
+        }
+        .ready { color: #2ecc71; border: 1px solid #2ecc71; }
+        .not-ready { color: #e74c3c; border: 1px solid #e74c3c; }
+
+        /* Controls */
+        .controls { 
+            background: #1e1e1e; padding: 20px; 
+            border-radius: 12px; margin-top: 20px; 
+            display: flex; justify-content: center; gap: 15px; align-items: center;
+        }
+        button { 
+            padding: 12px 28px; font-size: 1rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
+        button:active { transform: scale(0.95); }
+        .btn-capture { background: #3498db; color: white; }
+        .btn-capture:hover { background: #2980b9; }
+        .btn-calib { background: #f39c12; color: white; }
+        .btn-calib:hover { background: #d35400; }
+        
+        #stats { font-size: 1.2rem; color: #bbb; margin-top: 10px; }
+        pre { 
+            text-align: left; background: #000; color: #00ff00; 
+            padding: 15px; border-radius: 8px; margin-top: 20px;
+            max-height: 200px; overflow-y: auto; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Stereo Vision Calibration</h1>
+    <p>Pi Camera Module 3 Wide | 2x2 Binning | Manual Focus</p>
+
+    <div id="preview-container">
+        <img id="preview" src="" alt="Camera Stream">
+        <div id="badge" class="status-badge not-ready">SEARCHING FOR BOARD</div>
+    </div>
+
+    <div id="stats">Captures: <span id="count">0</span></div>
+
+    <div class="controls">
+        <button class="btn-capture" onclick="sendAction('capture')">CAPTURE FRAME</button>
+        <button class="btn-calib" onclick="sendAction('calibrate')">RUN STEREO CALIBRATION</button>
+    </div>
+
+    <pre id="output">Calibration data will appear here...</pre>
+</div>
+
+<script>
+    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+    const preview = document.getElementById('preview');
+    const badge = document.getElementById('badge');
+    const countSpan = document.getElementById('count');
+    const output = document.getElementById('output');
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === "stream") {
+            preview.src = "data:image/jpeg;base64," + msg.image;
+            countSpan.innerText = msg.count;
+            
+            if (msg.ready) {
+                badge.innerText = "BOARD DETECTED";
+                badge.className = "status-badge ready";
+            } else {
+                badge.innerText = "SEARCHING FOR BOARD";
+                badge.className = "status-badge not-ready";
+            }
+        } 
+        
+        else if (msg.type === "result") {
+            output.innerText = JSON.stringify(msg.data, null, 4);
+            if (msg.data.rms_error) {
+                alert(`Calibration Finished!\nRMS Error: ${msg.data.rms_error.toFixed(4)}`);
+            }
+        }
+    };
+
+    function sendAction(action) {
+        ws.send(JSON.stringify({ action: action }));
+    }
+
+    ws.onclose = () => { alert("Connection lost. Is the Python script running?"); };
+</script>
+
+</body>
+</html>

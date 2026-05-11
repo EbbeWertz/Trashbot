@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FastAPI MPU6050</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: #0f0; font-family: 'Courier New', monospace; display: flex; }
+        #ui { width: 320px; padding: 20px; border-right: 1px solid #0f0; z-index: 10; }
+        #render-target { flex-grow: 1; height: 100vh; }
+        .data-box { margin-bottom: 20px; border: 1px solid #060; padding: 10px; }
+        span { color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h2>IMU TELEMETRY</h2>
+        <div class="data-box">
+            <strong>ACCELEROMETER (G)</strong><br>
+            X: <span id="ax">0</span> Y: <span id="ay">0</span> Z: <span id="az">0</span>
+        </div>
+        <div class="data-box">
+            <strong>GYROSCOPE (deg/s)</strong><br>
+            X: <span id="gx">0</span> Y: <span id="gy">0</span> Z: <span id="gz">0</span>
+        </div>
+        <div class="data-box">
+            <strong>FUSED ORIENTATION</strong><br>
+            Roll: <span id="f_roll">0</span>°<br>
+            Pitch: <span id="f_pitch">0</span>°
+        </div>
+        <div class="data-box" style="border-color: #f00;">
+            <strong>GYRO DRIFT (Integrated X)</strong><br>
+            Roll: <span id="d_roll">0</span>°
+        </div>
+    </div>
+    <div id="render-target"></div>
+
+    <script>
+        // Setup Three.js
+        const target = document.getElementById('render-target');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, target.clientWidth / target.clientHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(target.clientWidth, target.clientHeight);
+        target.appendChild(renderer.domElement);
+
+        // Create a representation of the MPU6050 module
+        const geometry = new THREE.BoxGeometry(3, 0.2, 2);
+        const material = new THREE.MeshPhongMaterial({ color: 0x0055ff, shininess: 100 });
+        const pcb = new THREE.Mesh(geometry, material);
+        scene.add(pcb);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 5).unproject(camera);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+        camera.position.z = 5;
+
+        // Socket.IO Connection
+        const socket = io();
+        socket.on('imu_data', (data) => {
+            // Update UI
+            document.getElementById('ax').innerText = (data.accel.x/9.8).toFixed(2);
+            document.getElementById('ay').innerText = (data.accel.y/9.8).toFixed(2);
+            document.getElementById('az').innerText = (data.accel.z/9.8).toFixed(2);
+            document.getElementById('gx').innerText = data.gyro.x.toFixed(1);
+            document.getElementById('f_roll').innerText = data.filtered.roll;
+            document.getElementById('f_pitch').innerText = data.filtered.pitch;
+            document.getElementById('d_roll').innerText = data.drift_roll;
+
+            // Update 3D (Z-axis inversion often needed depending on sensor orientation)
+            pcb.rotation.x = data.filtered.pitch * (Math.PI / 180);
+            pcb.rotation.z = -data.filtered.roll * (Math.PI / 180);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
