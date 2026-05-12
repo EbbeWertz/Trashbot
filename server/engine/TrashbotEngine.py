@@ -1,8 +1,11 @@
-.
+from TrashbotConfig import TrashbotConfig
+from engine.hal.TrashbotHardware import TrashbotHardware
+
 
 class TrashbotEngine:
-    def __init__(self):
-        self.hal = hal
+    def __init__(self, config:TrashbotConfig):
+        self.config = config
+        self.hal = TrashbotHardware(config)
         self.manager = mp.Manager()
         
         self.shared_state = self.manager.dict({
