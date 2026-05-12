@@ -1,0 +1,38 @@
+{
+    "dimensions": {
+        "wheel_separation": 0.175,
+        "wheel_radius": 0.035
+    },
+    "encoder": {
+        "ppr": 11,
+        "gear_ratio": 50
+    },
+    "motors": {
+        "left": {
+            "pwm": 12,
+            "ina": 23,
+            "inb": 24,
+            "ena": 5,
+            "enb": 6,
+            "reverse": false
+        },
+        "right": {
+            "pwm": 13,
+            "ina": 27,
+            "inb": 22,
+            "ena": 26,
+            "enb": 16,
+            "reverse": false
+        }
+    },
+    "imu": {
+        "i2c_channel": 104
+    },
+    "cameras": {
+        "left_ch": 0,
+        "right_ch": 1,
+        "full_resolution": [2304, 1296],
+        "low_resolution": [640, 360],
+        "calibration_file": "calibrations/stereo_params_640.json"
+    }
+}
