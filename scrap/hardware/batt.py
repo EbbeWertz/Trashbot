@@ -1,47 +1,26 @@
-import serial
-import time
+def print_readable_status(raw_lines):
+    # Ensure we have enough data to avoid IndexErrors
+    if len(raw_lines) < 36:
+        print("Error: Received incomplete data dump from StromPi.")
+        return
 
-# --- Configuration ---
-SERIAL_PORT = '/dev/serial0'
-BAUD_RATE = 38400
-# 3s LiPo Voltage Range (Adjust based on your preference)
-V_MAX = 12.6  # 4.2V per cell
-V_MIN = 9.9   # 3.3V per cell (Safe cutoff)
-
-def get_strompi_voltage():
-    try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-            # Wake up and request status
-            ser.write(str.encode('status-rpi\x0D'))
-            time.sleep(0.5)
-            
-            # StromPi status returns ~30 lines. 
-            # We need the 28th line for Battery ADC (sp3_ADC_BAT)
-            lines = []
-            for _ in range(35):
-                line = ser.readline().decode('utf-8').strip()
-                if line:
-                    lines.append(line)
-            
-            # The Battery voltage is the 28th value in the status dump
-            # It is returned in mV (e.g., 11500)
-            raw_bat_mv = float(lines[27]) 
-            return raw_bat_mv / 1000.0
-    except Exception as e:
-        print(f"Error reading StromPi: {e}")
-        return None
-
-def calculate_percentage(voltage):
-    if voltage >= V_MAX: return 100.0
-    if voltage <= V_MIN: return 0.0
-    percent = ((voltage - V_MIN) / (V_MAX - V_MIN)) * 100
-    return round(percent, 1)
-
-if __name__ == "__main__":
-    voltage = get_strompi_voltage()
-    if voltage:
-        percent = calculate_percentage(voltage)
-        print(f"Battery Voltage: {voltage:.2f}V")
-        print(f"Charge Level:    {percent}%")
+    # Extraction with unit conversion (mV to V)
+    battery_v = float(raw_lines[31]) / 1000
+    rail_3_3  = float(raw_lines[33]) / 1000
+    rail_5_0  = float(raw_lines[34]) / 1000
+    
+    print("--- STROMPI 3 POWER STATUS ---")
+    print(f"Main Battery Input:  {battery_v:>6.2f} V")
+    print(f"Internal 3.3V Rail:  {rail_3_3:>6.2f} V")
+    print(f"Internal 5.0V Rail:  {rail_5_0:>6.2f} V")
+    print("------------------------------")
+    
+    # Simple Health Check
+    if battery_v < 10.5:
+        print("(!) WARNING: Battery Low")
     else:
-        print("Could not retrieve voltage.")
+        print("Status: Battery Healthy")
+
+# Example usage with your data:
+data = ['2648', '180501', '2', '4', '0', '1', '0', '0', '1', '1', '1', '0', '0', '0', '0', '10', '1', '0', '0', '0', '0', '0', '0', '1', '0', '30', '0', '0', '0', '30', '1', '12179', '0', '3295', '5128', '2', '0', 'v1.73']
+print_readable_status(data)
