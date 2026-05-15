@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from picamera2 import Picamera2
 from threading import Thread, Lock
 
-# --- Calibration Data (Parsed from YML) ---
+# --- Calibration Data (Remains the same) ---
 K1 = np.array([[1005.699745, 0., 1155.73808], [0., 1005.745235, 656.365347], [0., 0., 1.]])
 D1 = np.array([-1.341524, 1.018328, 0., 0., -0.101967, -1.310691, 0.925111, -0.036968, 0,0,0,0,0,0])
 K2 = np.array([[1007.351873, 0., 1152.24860], [0., 1007.222105, 649.429583], [0., 0., 1.]])
@@ -20,8 +20,7 @@ P1 = np.array([[1006.48367, 0., 1288.3914, 0.], [0., 1006.48367, 657.8783, 0.], 
 P2 = np.array([[1006.48367, 0., 1288.3914, -45203.3487], [0., 1006.48367, 657.8783, 0.], [0., 0., 1., 0.]])
 Q = np.array([[1., 0., 0., -1288.3914], [0., 1., 0., -657.8783], [0., 0., 0., 1006.4836], [0., 0., 0.022265, 0.]])
 
-CAMERA_MODE = "lo-res"
-
+CAMERA_MODE = "hi-res"
 SENSOR_RES = (2304, 1296) if CAMERA_MODE == "hi-res" else (1536, 864)
 CAM_FPS = 55.0 if CAMERA_MODE == "hi-res" else 120.0
 STREAM_RES = (640, 360)
@@ -40,51 +39,27 @@ class StereoTracker:
         self.fps = 0
         self.process_load_pct = 0.0
         
-        # HSV State
+        # Linear Interpolation State: Stores [(timestamp, x, y), ...]
+        self.history = {"l": [], "r": []}
+        
         self.center_hsv = np.array([60, 150, 150], dtype=np.uint8) 
         self.h_margin, self.sv_margin = 15, 60
         self.lower_color = np.array([45, 90, 90], dtype=np.uint8)
         self.upper_color = np.array([75, 255, 255], dtype=np.uint8)
 
     def setup(self):
-        # Let the hardware ISP do the heavy lifting: configure a lores stream
-        config_l = self.cam_l.create_video_configuration(
-            main={"format": "RGB888", "size": SENSOR_RES},
-            lores={"format": "RGB888", "size": STREAM_RES}
-        )
-        config_r = self.cam_r.create_video_configuration(
-            main={"format": "RGB888", "size": SENSOR_RES},
-            lores={"format": "RGB888", "size": STREAM_RES}
-        )
+        config_l = self.cam_l.create_video_configuration(main={"format": "RGB888", "size": SENSOR_RES}, lores={"format": "RGB888", "size": STREAM_RES})
+        config_r = self.cam_r.create_video_configuration(main={"format": "RGB888", "size": SENSOR_RES}, lores={"format": "RGB888", "size": STREAM_RES})
         
         for cam, config in zip([self.cam_l, self.cam_r], [config_l, config_r]):
             cam.configure(config)
-            cam.set_controls({
-                "LensPosition": 0,
-                "AfMode": 0,
-                "FrameRate": CAM_FPS
-            })
+            cam.set_controls({"LensPosition": 0, "AfMode": 0, "FrameRate": CAM_FPS})
             cam.start()
 
     def _update_bounds(self):
-        # 1. Cast the uint8 numpy values to standard Python ints 
-        # to prevent underflow wrap-around during subtraction
-        h = int(self.center_hsv[0])
-        s = int(self.center_hsv[1])
-        v = int(self.center_hsv[2])
-
-        # 2. Calculate bounds and explicitly lock the array type to uint8
-        self.lower_color = np.array([
-            max(0, h - self.h_margin), 
-            max(40, s - self.sv_margin), 
-            max(40, v - self.sv_margin)
-        ], dtype=np.uint8)
-        
-        self.upper_color = np.array([
-            min(180, h + self.h_margin), 
-            255, 
-            255
-        ], dtype=np.uint8)
+        h, s, v = map(int, self.center_hsv)
+        self.lower_color = np.array([max(0, h - self.h_margin), max(40, s - self.sv_margin), max(40, v - self.sv_margin)], dtype=np.uint8)
+        self.upper_color = np.array([min(180, h + self.h_margin), 255, 255], dtype=np.uint8)
 
     def sample_color(self, x_norm, y_norm):
         with self.lock:
@@ -97,72 +72,90 @@ class StereoTracker:
             self.center_hsv = hsv_px
             self._update_bounds()
 
+    def _get_interpolated_pos(self, side, target_time):
+        """Estimates where the object was on 'side' at target_time using linear regression of last 2 frames"""
+        hist = self.history[side]
+        if len(hist) < 2: return None
+        
+        (t1, x1, y1), (t2, x2, y2) = hist[-2], hist[-1]
+        dt = t2 - t1
+        if dt == 0: return x2, y2
+        
+        # Calculate velocity and project to target_time
+        vx, vy = (x2 - x1) / dt, (y2 - y1) / dt
+        dt_target = target_time - t2
+        
+        return x2 + vx * dt_target, y2 + vy * dt_target
+
     def rectify_point(self, pt, K, D, R, P):
-        """Rectifies a single (x, y) point mathematically"""
         pts_array = np.array([[pt]], dtype=np.float32)
         rectified = cv2.undistortPoints(pts_array, K, D, R=R, P=P)
         return rectified[0][0][0], rectified[0][0][1]
 
     def update_loop(self):
-        prev_time = time.time()
+        prev_time = time.perf_counter()
         expected_frame_time = 1.0 / CAM_FPS
         
         while True:
-            # 1. Capture Hardware-Downscaled Frames
-            # "lores" bypasses CPU resizing entirely
-            img_l_small = self.cam_l.capture_array("lores")
-            img_r_small = self.cam_r.capture_array("lores")
+            # 1. Capture and Timestamp
+            img_l = self.cam_l.capture_array("lores")
+            t_l = time.perf_counter()
+            img_r = self.cam_r.capture_array("lores")
+            t_r = time.perf_counter()
 
-            process_start = time.time()
+            process_start = time.perf_counter()
 
             with self.lock:
-                self.raw_frame_l = img_l_small.copy()
+                self.raw_frame_l = img_l.copy()
             
-            # 2. Tracking on Low-Res
-            targets = []
-            for img in [img_l_small, img_r_small]:
+            # 2. Tracking logic
+            current_targets = {"l": None, "r": None}
+            for side, img in [("l", img_l), ("r", img_r)]:
                 mask = cv2.inRange(cv2.cvtColor(img, cv2.COLOR_RGB2HSV), self.lower_color, self.upper_color)
                 conts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 if conts:
                     c = max(conts, key=cv2.contourArea)
                     (x, y), r = cv2.minEnclosingCircle(c)
-                    targets.append((x, y, r))
-                else: 
-                    targets.append(None)
+                    current_targets[side] = (x, y, r)
+                    # Update history for interpolation
+                    self.history[side].append((t_l if side == "l" else t_r, x, y))
+                    if len(self.history[side]) > 2: self.history[side].pop(0)
+                else:
+                    self.history[side] = [] # Clear history if tracking lost
 
-            # 3. Point Rectification & 3D Triangulation
-            if targets[0] and targets[1]:
-                # Scale coordinates back up to SENSOR_RES for accurate calibration matrix math
-                scale_x, scale_y = SENSOR_RES[0] / STREAM_RES[0], SENSOR_RES[1] / STREAM_RES[1]
+            # 3. Synchronized 3D Triangulation
+            if current_targets["l"] and current_targets["r"]:
+                # We normalize everything to the timestamp of the Right camera (t_r)
+                # Estimate where the Left target was at time t_r
+                interp_l = self._get_interpolated_pos("l", t_r)
                 
-                raw_x_l, raw_y_l = targets[0][0] * scale_x, targets[0][1] * scale_y
-                raw_x_r, raw_y_r = targets[1][0] * scale_x, targets[1][1] * scale_y
+                if interp_l:
+                    scale_x, scale_y = SENSOR_RES[0] / STREAM_RES[0], SENSOR_RES[1] / STREAM_RES[1]
+                    
+                    # Use interpolated Left X/Y and real Right X/Y
+                    raw_x_l, raw_y_l = interp_l[0] * scale_x, interp_l[1] * scale_y
+                    raw_x_r, raw_y_r = current_targets["r"][0] * scale_x, current_targets["r"][1] * scale_y
 
-                # Rectify ONLY the target center coordinates
-                rect_x_l, rect_y_l = self.rectify_point((raw_x_l, raw_y_l), K1, D1, R1, P1)
-                rect_x_r, rect_y_r = self.rectify_point((raw_x_r, raw_y_r), K2, D2, R2, P2)
+                    rect_x_l, rect_y_l = self.rectify_point((raw_x_l, raw_y_l), K1, D1, R1, P1)
+                    rect_x_r, rect_y_r = self.rectify_point((raw_x_r, raw_y_r), K2, D2, R2, P2)
 
-                disparity = rect_x_l - rect_x_r
-                
-                if disparity > 0:
-                    vec = np.array([rect_x_l, rect_y_l, disparity, 1.0])
-                    coords = Q @ vec
-                    coords /= coords[3]
-                    self.coords_3d = [coords[0], -coords[1], coords[2]]
+                    disparity = rect_x_l - rect_x_r
+                    if disparity > 0:
+                        vec = np.array([rect_x_l, rect_y_l, disparity, 1.0])
+                        coords = Q @ vec
+                        coords /= coords[3]
+                        self.coords_3d = [coords[0], -coords[1], coords[2]]
 
-            # 4. Draw & Encode (Drawing on unrectified lores stream for visualization)
-            for i, (img, target) in enumerate([(img_l_small, targets[0]), (img_r_small, targets[1])]):
+            # 4. Encoding for Web
+            for i, (side, img) in enumerate([("l", img_l), ("r", img_r)]):
+                target = current_targets[side]
                 if target:
                     cv2.circle(img, (int(target[0]), int(target[1])), int(target[2]), (0, 255, 0), 4)
-                
                 _, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                self.encoded["l" if i == 0 else "r"] = base64.b64encode(buf).decode('utf-8')
+                self.encoded[side] = base64.b64encode(buf).decode('utf-8')
 
-            # Performance calculations
-            now = time.time()
-            process_time = now - process_start
-            self.process_load_pct = (process_time / expected_frame_time) * 100
-            
+            now = time.perf_counter()
+            self.process_load_pct = ((now - process_start) / expected_frame_time) * 100
             self.fps = 1 / (now - prev_time)
             prev_time = now
 
@@ -185,8 +178,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif data.get("action") == "set_margins":
                     tracker.h_margin, tracker.sv_margin = int(data["h"]), int(data["sv"])
                     tracker._update_bounds()
-            except asyncio.TimeoutError:
-                pass
+            except asyncio.TimeoutError: pass
             
             await websocket.send_json({
                 "l": tracker.encoded["l"], "r": tracker.encoded["r"],
@@ -199,7 +191,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/")
 async def get():
-    return HTMLResponse("""
+    return HTMLResponse(open("index.html", "r").read() if False else """
     <!DOCTYPE html><html><head>
     <style>
         body { background: #0b0b0b; color: #4caf50; font-family: monospace; text-align: center; margin: 0; }
@@ -235,11 +227,8 @@ async def get():
                 document.getElementById('img_r').src = "data:image/jpeg;base64," + d.r;
                 document.getElementById('fps_val').innerText = "FPS: " + d.fps;
                 document.getElementById('load_val').innerText = "Load: " + d.load + "%";
-                
-                // Color load metric based on usage
                 const loadEl = document.getElementById('load_val');
                 loadEl.style.color = d.load > 85 ? '#ff4444' : (d.load > 60 ? '#ffbb33' : '#4caf50');
-
                 document.getElementById('info').innerText = `X: ${Math.round(d.pos[0])} | Y: ${Math.round(d.pos[1])} | Z: ${Math.round(d.pos[2])}`;
             };
         </script></body></html>
