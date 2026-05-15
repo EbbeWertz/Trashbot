@@ -9,7 +9,7 @@ class SystemStatus:
         self.baud_rate = baud_rate
         # 3s LiPo Configuration
         self.V_MAX = 12.6
-        self.V_MIN = 9.9
+        self.V_MIN = 10.8
 
     def _get_strompi_data(self):
         """Internal helper to fetch raw data from StromPi 3"""

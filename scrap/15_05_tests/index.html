@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stereo Tracker</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
+        .cam-container { display: flex; gap: 10px; grid-column: span 2; justify-content: center; }
+        img { width: 480px; border: 2px solid #444; }
+        .chart { height: 350px; background: #222; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="cam-container">
+        <img src="/video/0" id="cam0">
+        <img src="/video/1" id="cam1">
+    </div>
+    <div id="topDown" class="chart"></div>
+    <div id="zTime" class="chart"></div>
+    <div id="parabola" class="chart"></div>
+
+    <script>
+        const updateRate = 1000/24; // 24 fps polling
+        
+        // Setup Charts
+        const layout = { paper_bgcolor: '#222', plot_bgcolor: '#222', font: {color: '#fff'}, margin: {t:30, l:40, r:20, b:40} };
+        
+        Plotly.newPlot('topDown', [{ x: [0, 45], y: [0, 0], mode: 'markers', name: 'Cameras', marker: {size: 12, color: 'red'} }, 
+                                   { x: [], y: [], mode: 'lines+markers', name: 'Path' }], 
+                      { ...layout, title: 'Top-Down View (XY)', xaxis: {title: 'X (mm)'}, yaxis: {title: 'Y (mm)'} });
+
+        Plotly.newPlot('zTime', [{ x: [], y: [], mode: 'lines' }], { ...layout, title: 'Height over Time', xaxis: {title: 'Time (s)'}, yaxis: {title: 'Z (mm)'} });
+        Plotly.newPlot('parabola', [{ x: [], y: [], mode: 'lines' }], { ...layout, title: 'Trajectory (Z vs distance)', xaxis: {title: 'XY Dist from Origin'}, yaxis: {title: 'Z (mm)'} });
+
+        setInterval(async () => {
+            // Update Images
+            document.getElementById('cam0').src = "/video/0?t=" + Date.now();
+            document.getElementById('cam1').src = "/video/1?t=" + Date.now();
+
+            // Fetch Data
+            const res = await fetch('/data');
+            const data = await res.json();
+            const traj = data.trajectory;
+
+            if (traj.length > 0) {
+                Plotly.restyle('topDown', { x: [traj.map(p => p.x)], y: [traj.map(p => p.y)] }, [1]);
+                Plotly.restyle('zTime', { x: [traj.map(p => p.t)], y: [traj.map(p => p.z)] });
+                Plotly.restyle('parabola', { x: [traj.map(p => p.d)], y: [traj.map(p => p.z)] });
+            }
+        }, updateRate);
+    </script>
+</body>
+</html>

@@ -11,8 +11,8 @@ app = FastAPI()
 
 # --- CONFIGURATION ---
 CHESSBOARD_SIZE = (8, 5)
-SQUARE_SIZE = 23.0  # mm
-TARGET_RES = (640, 360) # Working resolution
+SQUARE_SIZE = 30.0  # mm
+TARGET_RES = (2304, 1296) # Working resolution
 CRITERIA = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 class StereoCalibrationSession:
