@@ -136,6 +136,12 @@ class StereoTracker:
                     raw_x_l, raw_y_l = interp_l[0] * scale_x, interp_l[1] * scale_y
                     raw_x_r, raw_y_r = current_targets["r"][0] * scale_x, current_targets["r"][1] * scale_y
 
+                    if CAMERA_MODE != "hi-res":
+                        x_offset = 384 #(2304 - 1536) / 2
+                        y_offset = 216 #(1296 - 864) / 2
+                        raw_x_l, raw_y_l = raw_x_l + x_offset, raw_y_l + y_offset
+                        raw_x_r, raw_y_r = raw_x_r + x_offset, raw_y_r + y_offset
+
                     rect_x_l, rect_y_l = self.rectify_point((raw_x_l, raw_y_l), K1, D1, R1, P1)
                     rect_x_r, rect_y_r = self.rectify_point((raw_x_r, raw_y_r), K2, D2, R2, P2)
 
