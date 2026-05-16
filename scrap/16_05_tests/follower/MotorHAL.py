@@ -111,6 +111,28 @@ class MotorHAL:
         self._set_motor("A", speed_a)
         self._set_motor("B", speed_b)
 
+    def drive_raw(self, speed_a: float, speed_b: float):
+        """
+        Drive both motors bypassing the min/max PWM clamp.
+        Use for the intercept burst where full 1.0 PWM is intentional.
+        Direction reversal flags still apply; speed is clamped to [-1, 1].
+        """
+        for side, speed in (("A", speed_a), ("B", speed_b)):
+            if side == "A":
+                pwm, p1, p2 = self._pwm_a, self._in1, self._in2
+                if self._rev_a: speed = -speed
+            else:
+                pwm, p1, p2 = self._pwm_b, self._in3, self._in4
+                if self._rev_b: speed = -speed
+
+            speed = max(-1.0, min(1.0, speed))
+            if abs(speed) < 0.01:
+                p1.off(); p2.off(); pwm.value = 0.0
+            elif speed > 0:
+                p1.on(); p2.off(); pwm.value = speed
+            else:
+                p1.off(); p2.on(); pwm.value = abs(speed)
+
     def drive_straight(self, speed: float):
         """Drive both motors at the same speed (vertical tracking)."""
         self.drive(speed, speed)

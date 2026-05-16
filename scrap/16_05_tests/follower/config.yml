@@ -9,7 +9,7 @@ camera:
   # Set true to swap left/right camera assignments
   swap: false
   # Sensor resolution: "hi-res" (2304x1296) or "lo-res" (1536x864)
-  mode: "lo-res"
+  mode: "hi-res"
   # Path to stereo calibration YAML (OpenCV format)
   calibration_file: "calibration.yml"
 
@@ -40,7 +40,7 @@ motors:
   # Mechanical constants
   ppr: 11.0               # Pulses per revolution (motor shaft)
   gear_ratio: 18.75
-  wheel_diameter_m: 0.065
+  wheel_diameter_m: 0.064
   track_width_m: 0.170    # Distance between center of tires
 
   # PWM speed limits (fraction 0.0–1.0)
@@ -64,4 +64,4 @@ stream:
   width: 640
   height: 360
   jpeg_quality: 70
-  target_fps: 120.0
+  target_fps: 55.0
