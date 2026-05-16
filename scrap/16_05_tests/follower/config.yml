@@ -1,0 +1,67 @@
+# ============================================================
+# RobotTracker System Configuration
+# ============================================================
+
+camera:
+  # Which Picamera2 index is left (0 or 1)
+  left_index: 0
+  right_index: 1
+  # Set true to swap left/right camera assignments
+  swap: false
+  # Sensor resolution: "hi-res" (2304x1296) or "lo-res" (1536x864)
+  mode: "lo-res"
+  # Path to stereo calibration YAML (OpenCV format)
+  calibration_file: "calibration.yml"
+
+motors:
+  # Set true to swap Motor A (left) and Motor B (right) assignments
+  swap_left_right: false
+
+  motor_a:  # Left motor
+    pwm_pin: 12
+    in1_pin: 24
+    in2_pin: 23
+    reverse: true   # Set true if motor runs backward on positive power
+
+  motor_b:  # Right motor
+    pwm_pin: 13
+    in3_pin: 27
+    in4_pin: 22
+    reverse: true
+
+  encoders:
+    left_pin_a: 5
+    left_pin_b: 6
+    right_pin_a: 26
+    right_pin_b: 16
+    reverse_left: true    # Set true if encoder counts down moving forward
+    reverse_right: true
+
+  # Mechanical constants
+  ppr: 11.0               # Pulses per revolution (motor shaft)
+  gear_ratio: 18.75
+  wheel_diameter_m: 0.065
+  track_width_m: 0.170    # Distance between center of tires
+
+  # PWM speed limits (fraction 0.0–1.0)
+  min_pwm: 0.21
+  max_pwm: 0.32
+
+pid:
+  kp: 0.004
+  ki: 0.0002
+  kd: 0.0001
+  deadzone: 10            # Pixel error deadzone
+
+vision:
+  # Default HSV tracking colour (overridden at runtime via colour picker)
+  hsv_center: [60, 150, 150]
+  h_margin: 15
+  sv_margin: 60
+  min_contour_area: 15
+
+stream:
+  width: 640
+  height: 360
+  jpeg_quality: 70
+  target_fps: 120.0

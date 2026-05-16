@@ -24,7 +24,7 @@ CAMERA_MODE = "hi-res"
 SENSOR_RES = (2304, 1296) if CAMERA_MODE == "hi-res" else (1536, 864)
 CAM_FPS = 55.0 if CAMERA_MODE == "hi-res" else 120.0
 STREAM_RES = (640, 360)
-CAM_SWAP = True
+CAM_SWAP = False
 
 app = FastAPI()
 
