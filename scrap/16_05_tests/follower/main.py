@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from concurrent.futures import ThreadPoolExecutor
 
 from RobotSystem import RobotSystem
+from motor_commands import *
 
 # ---------------------------------------------------------------------------
 # Config loading
@@ -61,7 +62,7 @@ async def ws_endpoint(websocket: WebSocket):
                 action = msg.get("action")
 
                 if action == "set_mode":
-                    bot.set_mode(msg.get("mode", "off"))
+                    bot.set_operating_mode(msg.get("mode", "off"))
 
                 elif action == "reset_intercept":
                     bot.reset_intercept()
@@ -70,12 +71,12 @@ async def ws_endpoint(websocket: WebSocket):
                     bot.sample_color(float(msg["x"]), float(msg["y"]))
 
                 elif action == "set_margins":
-                    bot.set_margins(int(msg["h"]), int(msg["sv"]))
+                    bot.set_hsv_margins(int(msg["h"]), int(msg["sv"]))
 
                 elif action == "test_motor":
                     side = msg.get("side", "A")
                     result = await loop.run_in_executor(
-                        executor, lambda: bot.test_motor(side, 1.0)
+                        executor, lambda: command_test_motor(bot, side, 1.0)
                     )
                     await websocket.send_json({"event": "test_result",
                                                "side": side, "log": result})
@@ -84,15 +85,15 @@ async def ws_endpoint(websocket: WebSocket):
                 elif action == "drive":
                     meters = float(msg.get("meters", 0))
                     loop.run_in_executor(executor,
-                                         lambda m=meters: bot.execute_drive(m))
+                                         lambda m=meters: command_execute_drive(bot, m))
 
                 elif action == "spin":
                     degrees = float(msg.get("degrees", 0))
                     loop.run_in_executor(executor,
-                                         lambda d=degrees: bot.execute_spin(d))
+                                         lambda d=degrees: command_execute_spin(bot, d))
 
                 elif action == "stop":
-                    bot.set_mode("off")
+                    bot.set_operating_mode("off")
 
             except asyncio.TimeoutError:
                 pass
