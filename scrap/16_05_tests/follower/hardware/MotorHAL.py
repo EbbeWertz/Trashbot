@@ -1,23 +1,10 @@
-"""
-MotorHAL.py — Motor and encoder hardware abstraction layer.
-All pin assignments, direction flags, and mechanical constants are read from
-the config dict that was loaded from config.yml.
-"""
-
 import math
 from gpiozero import PWMOutputDevice, DigitalOutputDevice, RotaryEncoder
+import time
 
 
 class MotorHAL:
-    """
-    Controls two DC motors (A = left, B = right) with optional quadrature
-    encoders, driven by config values.
-
-    Motor drive direction and encoder polarity can be independently reversed
-    per motor so that positive speed always means "forward" regardless of
-    how the hardware is wired.
-    """
-
+   
     def __init__(self, cfg: dict):
         mcfg = cfg["motors"]
         ma = mcfg["motor_a"]
@@ -65,8 +52,7 @@ class MotorHAL:
     # Encoder
     # ------------------------------------------------------------------
 
-    def get_ticks(self) -> tuple:
-        """Return (ticks_a, ticks_b) corrected for polarity."""
+    def get_encoder_ticks(self) -> tuple:
         ta = self._enc_a.steps * (-1 if self._rev_enc_a else 1)
         tb = self._enc_b.steps * (-1 if self._rev_enc_b else 1)
         return ta, tb
@@ -75,11 +61,8 @@ class MotorHAL:
     # Motor drive helpers
     # ------------------------------------------------------------------
 
+    # speed = [-1.0, 1.0]
     def _set_motor(self, side: str, speed: float):
-        """
-        Drive one motor.  speed is in [-1, 1]; positive = forward.
-        Applies direction reversal, min/max PWM clamping.
-        """
         if side == "A":
             pwm, p1, p2 = self._pwm_a, self._in1, self._in2
             if self._rev_a:
@@ -103,20 +86,14 @@ class MotorHAL:
         pwm.value = duty
 
     # ------------------------------------------------------------------
-    # Public drive API
+    # Abstracties
     # ------------------------------------------------------------------
 
     def drive(self, speed_a: float, speed_b: float):
-        """Drive both motors independently. speed in [-1, 1]."""
         self._set_motor("A", speed_a)
         self._set_motor("B", speed_b)
 
     def drive_raw(self, speed_a: float, speed_b: float):
-        """
-        Drive both motors bypassing the min/max PWM clamp.
-        Use for the intercept burst where full 1.0 PWM is intentional.
-        Direction reversal flags still apply; speed is clamped to [-1, 1].
-        """
         for side, speed in (("A", speed_a), ("B", speed_b)):
             if side == "A":
                 pwm, p1, p2 = self._pwm_a, self._in1, self._in2
@@ -152,19 +129,8 @@ class MotorHAL:
                         kp: float = 0.0035, kd: float = 0.0018,
                         settle_ticks: int = 2, settle_count_needed: int = 15,
                         progress_cb=None):
-        """
-        Closed-loop PD position controller.
 
-        Args:
-            target_a / target_b  – tick targets for each motor (signed).
-            kp, kd               – PD gains.
-            settle_ticks         – error window considered "done".
-            settle_count_needed  – consecutive cycles inside window before exit.
-            progress_cb          – optional callable(rev_s_a, rev_s_b, err_a, err_b).
-        """
-        import time
-
-        start_a, start_b = self.get_ticks()
+        start_a, start_b = self.get_encoder_ticks()
         last_err_a, last_err_b = target_a, target_b
         last_a, last_b = start_a, start_b
         loop_dt = 0.01
@@ -174,7 +140,7 @@ class MotorHAL:
         try:
             while True:
                 t0 = time.perf_counter()
-                cur_a, cur_b = self.get_ticks()
+                cur_a, cur_b = self.get_encoder_ticks()
 
                 err_a = target_a - (cur_a - start_a)
                 err_b = target_b - (cur_b - start_b)
