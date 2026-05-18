@@ -1,22 +1,4 @@
-"""
-InterceptEngine.py — Ballistic interception planner.
-
-Accumulates 3-D position samples, fits a ground-plane line to X/Y motion
-and a parabola to height (Z) vs time, then computes:
-
-  • The predicted catch time  t_catch  (when Z ≤ CATCH_HEIGHT_MM)
-  • The predicted catch point (X_catch, Y_catch) on the fitted XY line
-  • The required turn angle   θ  relative to the robot's current heading
-  • A time-budget for the intercept drive
-
-State machine
-─────────────
-  IDLE        – waiting for mode to be enabled
-  OBSERVING   – collecting samples; fitting improves each frame
-  COMMITTED   – prediction locked, intercept drive in progress
-  BRAKING     – Z ≤ CATCH_HEIGHT_MM, applying reverse pulse
-  DONE        – manoeuvre complete, waiting for reset
-"""
+# broken deze werkt niet goed.
 
 from __future__ import annotations
 

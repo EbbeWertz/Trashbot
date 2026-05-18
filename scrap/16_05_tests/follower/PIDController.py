@@ -1,8 +1,3 @@
-"""
-PIDController.py — Simple PID with deadzone and integral windup protection.
-"""
-
-
 class PIDController:
     def __init__(self, kp: float = 0.004, ki: float = 0.0002,
                  kd: float = 0.0001, deadzone: float = 10.0,
